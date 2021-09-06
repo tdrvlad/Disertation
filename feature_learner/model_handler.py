@@ -106,12 +106,12 @@ def add_convolutional(encoder_conv_layers, filters, kernel_size, strides = 1, po
         )
 
 
-def add_dense_layer(no_units, encoder_dense_layers, decoder_dense_layers = None, dropout_rate = 0):
+def add_dense_layer(no_units, encoder_dense_layers, decoder_dense_layers = None, dropout_rate = 0, add_normalization = False, activation = 'relu'):
 
     
     encoder_dense_layers.append(tf.keras.layers.Dense(
             units = no_units,
-            activation='relu'
+            activation=activation
         )
     )
     
@@ -120,7 +120,8 @@ def add_dense_layer(no_units, encoder_dense_layers, decoder_dense_layers = None,
             tf.keras.layers.Dropout(rate = dropout_rate)
         )
 
-    encoder_dense_layers.append(tf.keras.layers.BatchNormalization(axis=-1))
+    if add_normalization:
+        encoder_dense_layers.append(tf.keras.layers.BatchNormalization(axis=-1))
 
     if decoder_dense_layers is not None:
         decoder_dense_layers.append(tf.keras.layers.Dense(
@@ -149,7 +150,7 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 512, kernel_size = 3)
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 512, kernel_size = 3, pool_size = 2, pool_strides = 2)
     add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = decoder_dense_layers, dropout_rate = 0.2)
-    add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = None, dropout_rate = 0.1)
+    add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = None, activation = None)
     
     model_input = tf.keras.Input(shape = (input_shape[1], input_shape[0], 3))
 
@@ -203,7 +204,7 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     embedding_obj = encoder(model_input)
     reconstruction_output = decoder(embedding_obj)
 
-    model = tf.keras.Model(model_input, [encoder_output, reconstruction_output], name = 'model')
+    model = tf.keras.Model(model_input, [embedding_obj, reconstruction_output], name = 'model')
     model.summary()
     model.save(os.path.join(MODELS_DIR, model_name))
 
@@ -277,6 +278,9 @@ def train_model(model_name, data_handler, new_model_name = None, steps_per_epoch
         model.layers[1].trainable = False
 
     model.summary()
+
+    input("Press Enter to continue...")
+
     model.fit(
         data_generator,
         epochs=no_epochs,

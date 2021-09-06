@@ -2,7 +2,7 @@ from model_handler import *
 from data_handler import *
 import tensorflow as tf
 
-#create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidden_layer_neurons = 0, model_name = 'doublehead_model')
+create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidden_layer_neurons = 0, model_name = 'doublehead_model')
 
 
 (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
@@ -59,12 +59,12 @@ train_model(
     'doublehead_model', 
     data_handler_obj, 
     new_model_name = 'autoencoder', 
-    no_epochs = 100, 
+    no_epochs = 200, 
     steps_per_epoch = None, 
-    learning_rate = 0.01, 
+    learning_rate = 0.0001, 
     entity_loss_weight = 0, 
     context_loss_weight = 0,
     reconstruction_loss_weight = 100,
-    freeze_backbone = True, 
+    freeze_backbone = False, 
     doublehead = True
 )
