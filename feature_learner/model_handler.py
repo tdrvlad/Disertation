@@ -19,28 +19,41 @@ MODELS_DIR = os.path.join(rel_path, 'models')
 
 
 def generate_projector_files(model_name, data_handler, label_map, no_samples = 2000, max_category_samples = 200):
+   
+    model = tf.keras.models.load_model(os.path.join(MODELS_DIR, model_name), custom_objects={'EntityContextTripletLoss': EntityContextTripletLoss()})
 
-    x,y = data_handler.create_batch(no_samples)
-    labels = [label_map.get(e) for e in list(y[:,0])]
+    batch_size = 64
+    no_complete_batches = int(no_samples / batch_size)
 
-    embeddings = predict(model_name, x)
-
-    print(len(embeddings))
-    
-    filtered_labels = []
-    filtered_embeddings = []
+    embeddings = []
+    labels = []
     category_samples = {}
 
-    for i in range(len(embeddings)):
-        if category_samples.get(labels[i]) is None:
-            category_samples[labels[i]] = 0
-        category_samples[labels[i]] += 1
+    for _ in range(no_complete_batches):
+        x,y = data_handler.create_batch(batch_size)
+        pred = model.predict(x)
+
+        #select entity labels
+        y = y[:,0]
+
+        y = [label_map.get(y_i) for y_i in y]
         
-        if category_samples[labels[i]] < max_category_samples:
-            filtered_labels.append(labels[i])
-            filtered_embeddings.append(embeddings[i])
-    
+        for i in range(len(y)):
+            if category_samples.get(y[i]) is None:
+                category_samples[y[i]] = 0
+            category_samples[y[i]] += 1
+
+            if category_samples[y[i]] < max_category_samples:
+            	
+                labels.append(y[i])
+                embeddings.append(pred[i])
+
+            #print(pred[i])
+
     print(category_samples)
+    print(len(embeddings))
+
+    embeddings = np.stack(embeddings)
         
     genereate_tensorboard_projector_files(embeddings, labels, os.path.join(MODELS_DIR, model_name, 'logs') , data_split = 'train')
     
@@ -285,7 +298,8 @@ def predict(model_name, np_image_batch):
     for i in range(no_complete_batches):
         embeddings.extend(list(model.predict(np.stack(np_image_batch[i * batch_size: (i+1) * batch_size]))))
     
-    embeddings.extend(list(model.predict(np.stack(np_image_batch[no_complete_batches * batch_size:]))))
+    if no_complete_batches * batch_size < len(np_image_batch):
+        embeddings.extend(list(model.predict(np.stack(np_image_batch[no_complete_batches * batch_size:]))))
 
     return embeddings
 
