@@ -1,6 +1,5 @@
 /coco_dataset/annotations/
 /coco_dataset/val2017/
-/coco_dataset/cocoapi/
 /coco_dataset/__pycache__/
 /feature_learner/__pycache__/
 /feature_learner/models/
