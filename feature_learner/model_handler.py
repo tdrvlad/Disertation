@@ -18,7 +18,52 @@ rel_path = os.path.relpath(os.path.dirname(os.path.realpath(__file__)), os.getcw
 MODELS_DIR = os.path.join(rel_path, 'models')
 
 
-def generate_projector_files(model_name, data_handler, label_map, no_samples = 2000, max_category_samples = 200):
+def evaluate(model_name, data_handler, label_map, no_samples = 2000):
+
+    model = tf.keras.models.load_model(os.path.join(MODELS_DIR, model_name), custom_objects={'EntityContextTripletLoss': EntityContextTripletLoss()})
+
+    batch_size = 64
+    no_complete_batches = int(no_samples / batch_size)
+
+    embeddings = []
+    labels = []
+    category_samples = {}
+
+    for _ in range(no_complete_batches):
+        x,y = data_handler.create_batch(batch_size)
+        pred = model.predict(x)
+
+        #select entity labels
+        y = y[:,0]
+        y = [label_map.get(y_i) for y_i in y]
+        
+        embeddings.extend(x)
+        labels.extend(y)
+
+    class_distances = {}
+
+    for i in range(len(embeddings)):
+        for j in range(i, len(embeddings)):
+
+            distance_id = '{}_{}'.format(labels[i], labels[j])
+            if class_distances.get(distance_id) is None:
+                distance_id = '{}_{}'.format(labels[j], labels[i])
+
+                if class_distances.get(distance_id) is None:
+                    class_distances[distance_id] = []
+
+            class_distances[distance_id].append(np.mean((embeddings[i] - embeddings[j])**2))
+
+    class_distances_avg = {}
+
+    for k, dist_list in class_distances.items():
+        class_distances_avg[k] = sum(dist_list) / len(dist_list)
+        print('{}: {}'.format(k, class_distances_avg[k]))
+
+    
+
+
+def generate_projector_files(model_name, data_handler, label_map, no_samples = 2000, max_category_samples = 200, doublehead_model = False):
    
     model = tf.keras.models.load_model(os.path.join(MODELS_DIR, model_name), custom_objects={'EntityContextTripletLoss': EntityContextTripletLoss()})
 
@@ -33,6 +78,9 @@ def generate_projector_files(model_name, data_handler, label_map, no_samples = 2
         x,y = data_handler.create_batch(batch_size)
         pred = model.predict(x)
 
+        if doublehead_model:
+            pred = pred[0]
+        
         #select entity labels
         y = y[:,0]
 
@@ -149,7 +197,7 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 256, kernel_size = 3, pool_size = 2, pool_strides = 2)
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 512, kernel_size = 3)
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 512, kernel_size = 3, pool_size = 2, pool_strides = 2)
-    add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = decoder_dense_layers, dropout_rate = 0.2)
+    #add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = decoder_dense_layers, dropout_rate = 0.2)
     add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = None, activation = None)
     
     model_input = tf.keras.Input(shape = (input_shape[1], input_shape[0], 3))
@@ -194,7 +242,7 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     for layer in decoder_conv_layers:
         obj = layer(obj)
 
-    decoder_output = tf.keras.layers.Conv2DTranspose(3, 3, activation="sigmoid", padding="same")(obj)
+    decoder_output = tf.keras.layers.Conv2DTranspose(3, 3, activation="relu", padding="same")(obj)
     decoder = tf.keras.Model(decoder_input, decoder_output, name="decoder")
     decoder.summary()
 

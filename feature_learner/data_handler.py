@@ -15,7 +15,7 @@ import tensorflow as tf
 
 class DataHandler:
 
-    def __init__(self, image_detections, detection_data, target_classes = None, label_map = {}, apply_preprocessing = True):
+    def __init__(self, image_detections, detection_data, target_classes = None, label_map = {}):
 
         self.label_map = label_map
         self.reverse_label_map = {v:k for k,v in self.label_map.items()}
@@ -23,19 +23,8 @@ class DataHandler:
         self.image_detections = self.filter_out_image_detections(image_detections, target_classes)
         self.detection_data = detection_data.copy()
 
-        if apply_preprocessing:
-            self.apply_preprocessing()
-
         self.initialize_image_queue()
         self.augmentation_model = None
-
-
-    def apply_preprocessing(self):
-        
-        keys = list(self.detection_data.keys())
-
-        for i in range(len(self.detection_data)):
-            self.detection_data[keys[i]] = tf.keras.applications.mobilenet.preprocess_input(self.detection_data[keys[i]])
 
 
     def get_all_object_categories(self):
