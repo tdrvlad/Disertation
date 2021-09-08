@@ -136,8 +136,8 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 256, kernel_size = 3, pool_size = 2, pool_strides = 2)
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 512, kernel_size = 3)
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 512, kernel_size = 3, pool_size = 2, pool_strides = 2)
-    add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = decoder_dense_layers, dropout_rate = 0.2)
-    add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = None, activation = None)
+    #add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = decoder_dense_layers, dropout_rate = 0.2)
+    add_dense_layer(embedding_size, encoder_dense_layers, decoder_dense_layers = None, activation = None)
     
     model_input = tf.keras.Input(shape = (input_shape[1], input_shape[0], 3))
 
@@ -174,14 +174,13 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     for layer in decoder_dense_layers:
         obj = layer(obj)
 
-    print(flatten_shape)
     obj = tf.keras.layers.Dense(units = int(flatten_shape), activation='relu')(obj)
     obj = tf.keras.layers.Reshape(conv_shape)(obj)
 
     for layer in decoder_conv_layers:
         obj = layer(obj)
 
-    decoder_output = tf.keras.layers.Conv2DTranspose(3, 3, activation="sigmoid", padding="same")(obj)
+    decoder_output = tf.keras.layers.Conv2DTranspose(3, 3, activation="relu", padding="same")(obj)
     decoder = tf.keras.Model(decoder_input, decoder_output, name="decoder")
     decoder.summary()
 
@@ -196,7 +195,7 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     model.save(os.path.join(MODELS_DIR, model_name))
 
 
-def create_model(input_shape = (224,224,3), embedding_size = 3, intermediate_layer_size = 0, model_name = '3d_model'):
+def create_model(input_shape = (224,224,3), embedding_size = 256, intermediate_layer_size = 512, model_name = 'final_model_ImageNet', add_preprocessing = True):
 
     input_obj = tf.keras.layers.Input(input_shape)
 
@@ -262,7 +261,7 @@ def train_model(model_name, data_handler, new_model_name = None, steps_per_epoch
     save_callback = tf.keras.callbacks.ModelCheckpoint(new_model_dir, save_freq="epoch")
 
     if freeze_backbone:
-        model.layers[1].trainable = False
+        model.layers[3].trainable = False
 
     model.summary()
 
@@ -292,6 +291,22 @@ def predict(model_name, np_image_batch):
     embeddings.extend(list(model.predict(np.stack(np_image_batch[no_complete_batches * batch_size:]))))
 
     return embeddings
+
+
+def add_mobilenet_preprocessing_to_model(model_name):
+
+    model = tf.keras.models.load_model(os.path.join(MODELS_DIR, model_name), custom_objects={'EntityContextTripletLoss': EntityContextTripletLoss()})
+    input_obj = tf.keras.layers.Input(model.layers[0].get_input_shape_at(0)[1:])
+
+    obj = tf.keras.applications.mobilenet.preprocess_input(input_obj)
+    for layer in model.layers[1:]:
+        obj = layer(obj)
+
+    new_model = tf.keras.Model(input_obj, obj)
+    new_model.summary()
+
+    new_model.save(os.path.join(MODELS_DIR, model_name + '_with_preprocessing'))
+    
 
 
 class EntityContextTripletLoss(tf.keras.losses.Loss):

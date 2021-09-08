@@ -15,7 +15,7 @@ import tensorflow as tf
 
 class DataHandler:
 
-    def __init__(self, image_detections, detection_data, target_classes = None, label_map = {}, apply_preprocessing = True):
+    def __init__(self, image_detections, detection_data, target_classes = None, label_map = {}):
 
         self.label_map = label_map
         self.reverse_label_map = {v:k for k,v in self.label_map.items()}
@@ -23,19 +23,8 @@ class DataHandler:
         self.image_detections = self.filter_out_image_detections(image_detections, target_classes)
         self.detection_data = detection_data.copy()
 
-        if apply_preprocessing:
-            self.apply_preprocessing()
-
         self.initialize_image_queue()
         self.augmentation_model = None
-
-
-    def apply_preprocessing(self):
-        
-        keys = list(self.detection_data.keys())
-
-        for i in range(len(self.detection_data)):
-            self.detection_data[keys[i]] = tf.keras.applications.mobilenet.preprocess_input(self.detection_data[keys[i]])
 
 
     def get_all_object_categories(self):
@@ -105,7 +94,7 @@ class DataHandler:
         
 
 
-    def create_batch(self, batch_size = 64, autoencoder_label = False):
+    def create_batch(self, batch_size = 64, autoencoder_label = False, apply_imagenet_preprocessing = False, apply_normalization = False):
 
         batch_x = []
         batch_y = np.zeros((batch_size, 2))
@@ -138,16 +127,22 @@ class DataHandler:
         if not self.augmentation_model is None:
             batch_x = self.augmentation_model(batch_x, training = True)
         
+        if apply_imagenet_preprocessing:
+            batch_x = tf.keras.applications.mobilenet.preprocess_input(batch_x)
+        
+        if apply_imagenet_preprocessing:
+            batch_x /= 255.
+
         if autoencoder_label:
             return batch_x, (batch_y, batch_x)
         else:
             return batch_x, batch_y
 
     
-    def batch_generator(self, batch_size = 64, autoencoder_label = False):
+    def batch_generator(self, batch_size = 64, autoencoder_label = False, apply_imagenet_preprocessing = False, apply_normalization = False):
 
         while True:
-            yield self.create_batch(batch_size, autoencoder_label = autoencoder_label)
+            yield self.create_batch(batch_size, autoencoder_label = autoencoder_label, apply_imagenet_preprocessing, apply_normalization)
 
 
     def add_augmentation(self, flip=True, rotation=True, translation=True, zoom=True, contrast=False):
