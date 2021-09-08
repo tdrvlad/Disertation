@@ -195,7 +195,7 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     model.save(os.path.join(MODELS_DIR, model_name))
 
 
-def create_model(input_shape = (224,224,3), embedding_size = 256, intermediate_layer_size = 512, model_name = 'final_model_ImageNet', add_preprocessing = True):
+def create_model(input_shape = (224,224,3), embedding_size = 256, intermediate_layer_size = 512, model_name = 'final_model_ImageNet'):
 
     input_obj = tf.keras.layers.Input(input_shape)
 
@@ -222,10 +222,10 @@ def create_model(input_shape = (224,224,3), embedding_size = 256, intermediate_l
 
 
 
-def train_model(model_name, data_handler, new_model_name = None, steps_per_epoch = None, no_epochs = 10, learning_rate = 0.01, entity_loss_weight = 1, context_loss_weight = 1, freeze_backbone = True, doublehead = False, reconstruction_loss_weight = 1):
+def train_model(model_name, data_handler, new_model_name = None, steps_per_epoch = None, no_epochs = 10, learning_rate = 0.01, entity_loss_weight = 1, context_loss_weight = 1, freeze_backbone = True, doublehead = False, reconstruction_loss_weight = 1, apply_imagenet_preprocessing = False):
 
     batch_size = 32
-    data_generator = data_handler.batch_generator(batch_size = batch_size, autoencoder_label = doublehead)
+    data_generator = data_handler.batch_generator(batch_size = batch_size, autoencoder_label = doublehead, apply_imagenet_preprocessing = apply_imagenet_preprocessing)
 
     if steps_per_epoch is None:
         steps_per_epoch = int(data_handler.get_no_items() / batch_size)

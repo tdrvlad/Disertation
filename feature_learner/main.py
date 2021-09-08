@@ -98,8 +98,6 @@ train_model(
 )
 '''
 
-#add_mobilenet_preprocessing_to_model('trained_entity_model_all')
-
 
 import sys
 # insert at 1, 0 is the script path (or '' in REPL)
@@ -107,8 +105,7 @@ sys.path.insert(1, '../coco_dataset')
 
 from coco_handler import *
 
-#create_model(input_shape = (224,224,3), embedding_size = 256, intermediate_layer_size = 512, model_name = 'final_model_ImageNet', add_preprocessing = True)
-
+create_model(input_shape = (224,224,3), embedding_size = 256, intermediate_layer_size = 512, model_name = 'FINAL_MODEL')
 
 
 image_data, removed_image_ids = get_image_data(annotations_file, images_dir)
@@ -125,32 +122,26 @@ data_handler_obj = DataHandler(
 )
 
 
-
 data_handler_obj.add_augmentation(flip=True, rotation=True, translation=True, zoom=True, contrast=False)
 
 all_object_categories = data_handler_obj.get_all_object_categories()
 print(len(all_object_categories), set(all_object_categories))
 
-x,y = data_handler_obj.create_batch(16)
-
-np_image = np.array(x[0]).astype(np.uint8)
-from PIL import Image
-pil_image = Image.fromarray(np_image)
-pil_image.save('sample.png')
-
 train_model(
     'final_model_ImageNet', 
     data_handler_obj, 
     new_model_name = 'FULL_TRAIN_entity_context_ImageNet', 
-    no_epochs = 50, 
+    no_epochs = 100, 
     steps_per_epoch = None, 
-    learning_rate = 0.0001, 
+    learning_rate = 0.001, 
     entity_loss_weight = 1, 
     context_loss_weight = 0.5,
     reconstruction_loss_weight = 100,
     freeze_backbone = True, 
-    doublehead = False
+    doublehead = False,
+    apply_imagenet_preprocessing = True
 )
+
 
 
 
