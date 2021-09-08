@@ -18,90 +18,29 @@ rel_path = os.path.relpath(os.path.dirname(os.path.realpath(__file__)), os.getcw
 MODELS_DIR = os.path.join(rel_path, 'models')
 
 
-def evaluate(model_name, data_handler, label_map, no_samples = 2000):
+def generate_projector_files(model_name, data_handler, label_map, no_samples = 2000, max_category_samples = 200):
 
-    model = tf.keras.models.load_model(os.path.join(MODELS_DIR, model_name), custom_objects={'EntityContextTripletLoss': EntityContextTripletLoss()})
+    x,y = data_handler.create_batch(no_samples)
+    labels = [label_map.get(e) for e in list(y[:,0])]
 
-    batch_size = 64
-    no_complete_batches = int(no_samples / batch_size)
+    embeddings = predict(model_name, x)
 
-    embeddings = []
-    labels = []
+    print(len(embeddings))
+    
+    filtered_labels = []
+    filtered_embeddings = []
     category_samples = {}
-
-    for _ in range(no_complete_batches):
-        x,y = data_handler.create_batch(batch_size)
-        pred = model.predict(x)
-
-        #select entity labels
-        y = y[:,0]
-        y = [label_map.get(y_i) for y_i in y]
-        
-        embeddings.extend(x)
-        labels.extend(y)
-
-    class_distances = {}
 
     for i in range(len(embeddings)):
-        for j in range(i, len(embeddings)):
-
-            distance_id = '{}_{}'.format(labels[i], labels[j])
-            if class_distances.get(distance_id) is None:
-                distance_id = '{}_{}'.format(labels[j], labels[i])
-
-                if class_distances.get(distance_id) is None:
-                    class_distances[distance_id] = []
-
-            class_distances[distance_id].append(np.mean((embeddings[i] - embeddings[j])**2))
-
-    class_distances_avg = {}
-
-    for k, dist_list in class_distances.items():
-        class_distances_avg[k] = sum(dist_list) / len(dist_list)
-        print('{}: {}'.format(k, class_distances_avg[k]))
-
+        if category_samples.get(labels[i]) is None:
+            category_samples[labels[i]] = 0
+        category_samples[labels[i]] += 1
+        
+        if category_samples[labels[i]] < max_category_samples:
+            filtered_labels.append(labels[i])
+            filtered_embeddings.append(embeddings[i])
     
-
-
-def generate_projector_files(model_name, data_handler, label_map, no_samples = 2000, max_category_samples = 200, doublehead_model = False):
-   
-    model = tf.keras.models.load_model(os.path.join(MODELS_DIR, model_name), custom_objects={'EntityContextTripletLoss': EntityContextTripletLoss()})
-
-    batch_size = 64
-    no_complete_batches = int(no_samples / batch_size)
-
-    embeddings = []
-    labels = []
-    category_samples = {}
-
-    for _ in range(no_complete_batches):
-        x,y = data_handler.create_batch(batch_size)
-        pred = model.predict(x)
-
-        if doublehead_model:
-            pred = pred[0]
-        
-        #select entity labels
-        y = y[:,0]
-
-        y = [label_map.get(y_i) for y_i in y]
-        
-        for i in range(len(y)):
-            if category_samples.get(y[i]) is None:
-                category_samples[y[i]] = 0
-            category_samples[y[i]] += 1
-
-            if category_samples[y[i]] < max_category_samples:
-            	
-                labels.append(y[i])
-                embeddings.append(pred[i])
-
-            #print(pred[i])
-
     print(category_samples)
-    print(len(embeddings))
-
-    embeddings = np.stack(embeddings)
         
     genereate_tensorboard_projector_files(embeddings, labels, os.path.join(MODELS_DIR, model_name, 'logs') , data_split = 'train')
     
@@ -198,7 +137,7 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 512, kernel_size = 3)
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 512, kernel_size = 3, pool_size = 2, pool_strides = 2)
     #add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = decoder_dense_layers, dropout_rate = 0.2)
-    add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = None, activation = None)
+    add_dense_layer(embedding_size, encoder_dense_layers, decoder_dense_layers = None, activation = None)
     
     model_input = tf.keras.Input(shape = (input_shape[1], input_shape[0], 3))
 
@@ -235,7 +174,6 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     for layer in decoder_dense_layers:
         obj = layer(obj)
 
-    print(flatten_shape)
     obj = tf.keras.layers.Dense(units = int(flatten_shape), activation='relu')(obj)
     obj = tf.keras.layers.Reshape(conv_shape)(obj)
 
@@ -257,7 +195,7 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     model.save(os.path.join(MODELS_DIR, model_name))
 
 
-def create_model(input_shape = (224,224,3), embedding_size = 3, intermediate_layer_size = 0, model_name = '3d_model'):
+def create_model(input_shape = (224,224,3), embedding_size = 256, intermediate_layer_size = 512, model_name = 'final_model_ImageNet'):
 
     input_obj = tf.keras.layers.Input(input_shape)
 
@@ -284,10 +222,10 @@ def create_model(input_shape = (224,224,3), embedding_size = 3, intermediate_lay
 
 
 
-def train_model(model_name, data_handler, new_model_name = None, steps_per_epoch = None, no_epochs = 10, learning_rate = 0.01, entity_loss_weight = 1, context_loss_weight = 1, freeze_backbone = True, doublehead = False, reconstruction_loss_weight = 1):
+def train_model(model_name, data_handler, new_model_name = None, steps_per_epoch = None, no_epochs = 10, learning_rate = 0.01, entity_loss_weight = 1, context_loss_weight = 1, freeze_backbone = True, doublehead = False, reconstruction_loss_weight = 1, apply_imagenet_preprocessing = False):
 
     batch_size = 32
-    data_generator = data_handler.batch_generator(batch_size = batch_size, autoencoder_label = doublehead)
+    data_generator = data_handler.batch_generator(batch_size = batch_size, autoencoder_label = doublehead, apply_imagenet_preprocessing = apply_imagenet_preprocessing)
 
     if steps_per_epoch is None:
         steps_per_epoch = int(data_handler.get_no_items() / batch_size)
@@ -323,7 +261,7 @@ def train_model(model_name, data_handler, new_model_name = None, steps_per_epoch
     save_callback = tf.keras.callbacks.ModelCheckpoint(new_model_dir, save_freq="epoch")
 
     if freeze_backbone:
-        model.layers[1].trainable = False
+        model.layers[3].trainable = False
 
     model.summary()
 
@@ -350,10 +288,25 @@ def predict(model_name, np_image_batch):
     for i in range(no_complete_batches):
         embeddings.extend(list(model.predict(np.stack(np_image_batch[i * batch_size: (i+1) * batch_size]))))
     
-    if no_complete_batches * batch_size < len(np_image_batch):
-        embeddings.extend(list(model.predict(np.stack(np_image_batch[no_complete_batches * batch_size:]))))
+    embeddings.extend(list(model.predict(np.stack(np_image_batch[no_complete_batches * batch_size:]))))
 
     return embeddings
+
+
+def add_mobilenet_preprocessing_to_model(model_name):
+
+    model = tf.keras.models.load_model(os.path.join(MODELS_DIR, model_name), custom_objects={'EntityContextTripletLoss': EntityContextTripletLoss()})
+    input_obj = tf.keras.layers.Input(model.layers[0].get_input_shape_at(0)[1:])
+
+    obj = tf.keras.applications.mobilenet.preprocess_input(input_obj)
+    for layer in model.layers[1:]:
+        obj = layer(obj)
+
+    new_model = tf.keras.Model(input_obj, obj)
+    new_model.summary()
+
+    new_model.save(os.path.join(MODELS_DIR, model_name + '_with_preprocessing'))
+    
 
 
 class EntityContextTripletLoss(tf.keras.losses.Loss):
@@ -397,4 +350,3 @@ def genereate_tensorboard_projector_files(embeddings, labels, directory, data_sp
     out_m.close()
 
 #create_model()
-

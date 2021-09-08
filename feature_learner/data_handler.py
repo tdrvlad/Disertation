@@ -94,7 +94,7 @@ class DataHandler:
         
 
 
-    def create_batch(self, batch_size = 64, autoencoder_label = False):
+    def create_batch(self, batch_size = 64, autoencoder_label = False, apply_imagenet_preprocessing = False, apply_normalization = False):
 
         batch_x = []
         batch_y = np.zeros((batch_size, 2))
@@ -126,17 +126,30 @@ class DataHandler:
 
         if not self.augmentation_model is None:
             batch_x = self.augmentation_model(batch_x, training = True)
+            batch_x = np.array(batch_x)
+
+        if apply_imagenet_preprocessing:
+            batch_x = tf.keras.applications.mobilenet.preprocess_input(batch_x)
+            batch_x = np.array(batch_x)
         
+        if apply_imagenet_preprocessing:
+            batch_x /= 255.
+
         if autoencoder_label:
             return batch_x, (batch_y, batch_x)
         else:
             return batch_x, batch_y
 
     
-    def batch_generator(self, batch_size = 64, autoencoder_label = False):
+    def batch_generator(self, batch_size = 64, autoencoder_label = False, apply_imagenet_preprocessing = False, apply_normalization = False):
 
         while True:
-            yield self.create_batch(batch_size, autoencoder_label = autoencoder_label)
+            yield self.create_batch(
+                batch_size, 
+                autoencoder_label = autoencoder_label, 
+                apply_imagenet_preprocessing = apply_imagenet_preprocessing, 
+                apply_normalization = apply_normalization
+            )
 
 
     def add_augmentation(self, flip=True, rotation=True, translation=True, zoom=True, contrast=False):
