@@ -318,7 +318,15 @@ def get_detection_data(image_data, image_detections):
     
     return detection_data
           
-    
+
+def get_image_detections_and_detection_data():
+
+    global annotations_file, images_dir
+    image_data, removed_image_ids = get_image_data(annotations_file, images_dir)
+    image_detections = get_image_detections(annotations_file, removed_image_ids)
+    detection_data = get_detection_data(image_data, image_detections)
+
+    return image_detections, detection_data
 
            
 #image_data, removed_image_ids = get_image_data(annotations_file, images_dir)

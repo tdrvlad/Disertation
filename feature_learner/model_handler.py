@@ -18,15 +18,15 @@ rel_path = os.path.relpath(os.path.dirname(os.path.realpath(__file__)), os.getcw
 MODELS_DIR = os.path.join(rel_path, 'models')
 
 
-def generate_projector_files(model_name, data_handler, label_map, no_samples = 2000, max_category_samples = 200):
+def generate_projector_files(model_name, data_handler, label_map, no_samples = 2000, max_category_samples = 200, doublehead_model = False):
+
+    data_handler.remove_augmentation()
 
     x,y = data_handler.create_batch(no_samples)
     labels = [label_map.get(e) for e in list(y[:,0])]
-
-    embeddings = predict(model_name, x)
-
-    print(len(embeddings))
     
+    embeddings = predict(model_name, x, doublehead_model = doublehead_model)
+
     filtered_labels = []
     filtered_embeddings = []
     category_samples = {}
@@ -41,8 +41,10 @@ def generate_projector_files(model_name, data_handler, label_map, no_samples = 2
             filtered_embeddings.append(embeddings[i])
     
     print(category_samples)
+
+
         
-    genereate_tensorboard_projector_files(embeddings, labels, os.path.join(MODELS_DIR, model_name, 'logs') , data_split = 'train')
+    genereate_tensorboard_projector_files(filtered_embeddings, filtered_labels, os.path.join(MODELS_DIR, model_name, 'logs') , data_split = 'train')
     
 
 def add_convolutional(encoder_conv_layers, filters, kernel_size, strides = 1, pool_size = None, pool_strides = None, dropout_rate = None, decoder_conv_layers = None):
@@ -136,7 +138,9 @@ def create_doublehead_model(input_shape = (32,32,3), embedding_size = 128, hidde
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 256, kernel_size = 3, pool_size = 2, pool_strides = 2)
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 512, kernel_size = 3)
     add_convolutional(encoder_conv_layers, decoder_conv_layers = decoder_conv_layers, filters = 512, kernel_size = 3, pool_size = 2, pool_strides = 2)
-    #add_dense_layer(embedding_size * 2, encoder_dense_layers, decoder_dense_layers = decoder_dense_layers, dropout_rate = 0.2)
+    
+    if hidden_layer_neurons:
+        add_dense_layer(hidden_layer_neurons, encoder_dense_layers, decoder_dense_layers = decoder_dense_layers, dropout_rate = 0.2)
     add_dense_layer(embedding_size, encoder_dense_layers, decoder_dense_layers = None, activation = None)
     
     model_input = tf.keras.Input(shape = (input_shape[1], input_shape[0], 3))
@@ -222,7 +226,7 @@ def create_model(input_shape = (224,224,3), embedding_size = 256, intermediate_l
 
 
 
-def train_model(model_name, data_handler, new_model_name = None, steps_per_epoch = None, no_epochs = 10, learning_rate = 0.01, entity_loss_weight = 1, context_loss_weight = 1, freeze_backbone = True, doublehead = False, reconstruction_loss_weight = 1, apply_imagenet_preprocessing = False):
+def train_model(model_name, data_handler, new_model_name = None, steps_per_epoch = None, no_epochs = 10, learning_rate = 0.01, entity_loss_weight = 1, context_loss_weight = 1, freeze_backbone = True, doublehead = False, reconstruction_loss_weight = 1, apply_imagenet_preprocessing = False, skip_verification = True):
 
     batch_size = 32
     data_generator = data_handler.batch_generator(batch_size = batch_size, autoencoder_label = doublehead, apply_imagenet_preprocessing = apply_imagenet_preprocessing)
@@ -265,7 +269,8 @@ def train_model(model_name, data_handler, new_model_name = None, steps_per_epoch
 
     model.summary()
 
-    input("Press Enter to continue...")
+    if not skip_verification:
+        input("Press Enter to continue...")
 
     model.fit(
         data_generator,
@@ -277,18 +282,47 @@ def train_model(model_name, data_handler, new_model_name = None, steps_per_epoch
     model.save(new_model_dir)
 
 
-def predict(model_name, np_image_batch):
+def save_model_summary(model_name):
+
+    model = tf.keras.models.load_model(os.path.join(MODELS_DIR, model_name), custom_objects={'EntityContextTripletLoss': EntityContextTripletLoss()})
+
+    from contextlib import redirect_stdout
+
+    summary_file = os.path.join(MODELS_DIR, model_name, 'model_summary.txt')
+    plot_file = os.path.join(MODELS_DIR, model_name, 'model_plot.png')
+
+    '''
+    with open(summary_file, 'w') as f:
+        with redirect_stdout(f):
+            model.summary()
+    '''
+
+    from tensorflow.keras.utils import plot_model
+    plot_model(model, to_file=plot_file, show_shapes=True, show_layer_names=True)
+
+
+
+def predict(model_name, np_image_batch, doublehead_model = False):
 
     model = tf.keras.models.load_model(os.path.join(MODELS_DIR, model_name), custom_objects={'EntityContextTripletLoss': EntityContextTripletLoss()})
 
     batch_size = 64
     no_complete_batches = int(len(np_image_batch) / batch_size)
-    
     embeddings = []
+
     for i in range(no_complete_batches):
-        embeddings.extend(list(model.predict(np.stack(np_image_batch[i * batch_size: (i+1) * batch_size]))))
+        pred = model.predict(np.stack(np_image_batch[i * batch_size: (i+1) * batch_size]))
+        if doublehead_model:  
+            pred = pred[0]
+
+        embeddings.extend(list(pred))
+
+    pred = model.predict(np.stack(np_image_batch[no_complete_batches * batch_size:]))
+
+    if doublehead_model:  
+        pred = pred[0]
     
-    embeddings.extend(list(model.predict(np.stack(np_image_batch[no_complete_batches * batch_size:]))))
+    embeddings.extend(list(pred))
 
     return embeddings
 
@@ -349,4 +383,6 @@ def genereate_tensorboard_projector_files(embeddings, labels, directory, data_sp
     [out_m.write(str(x) + "\n") for x in labels]
     out_m.close()
 
-#create_model()
+
+if __name__ =='__main__':
+    save_model_summary('final_model_ImageNet')
